@@ -1,195 +1,181 @@
 import streamlit as st
-import csv
-import os
-import random
 import pandas as pd
 import time
+import requests
+import gspread
+from google.oauth2.service_account import Credentials
+from streamlit_lottie import st_lottie
 
 # --- AYARLAR ---
-DOSYA_ADI = "katilimcilar.csv"
-YONETICI_SIFRESI = "2025"  # Şifreni buradan belirle
 
-st.set_page_config(
-    page_title="2025 Yılbaşı Çekilişi", 
-    page_icon="🎄",
-    layout="centered"
-)
+SHEET_ADI = "YilbasiCekilis2025" 
+YONETICI_SIFRESI = "2025"
 
-# --- CSS İLE GÜZELLEŞTİRME ---
+st.set_page_config(page_title="2025 Yılbaşı Çekilişi", page_icon="🎄", layout="centered")
+
+# --- CSS ---
 st.markdown("""
     <style>
-    /* Butonu kırmızı ve büyük yapalım */
-    .stButton>button {
-        width: 100%;
-        background-color: #ff4b4b;
-        color: white;
-        font-size: 20px;
-        border-radius: 10px;
-        padding: 10px;
-        font-weight: bold;
-    }
-    .stButton>button:hover {
-        background-color: #ff0000;
-        border-color: white;
-        box-shadow: 0px 0px 10px white;
-    }
-    /* Başlık stili */
-    h1 {
-        text-align: center; 
-        color: #d63031;
-    }
+    .stButton>button { width: 100%; background-color: #ff4b4b; color: white; font-weight: bold; padding: 10px; border-radius: 10px; }
+    .stButton>button:hover { background-color: #ff0000; border-color: white; box-shadow: 0px 0px 10px white; }
+    h1 { text-align: center; color: #d63031; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- MENÜ ---
+# --- GOOGLE SHEETS BAĞLANTISI ---
+@st.cache_resource
+def sheet_baglan():
+    try:
+        # Secrets'tan bilgileri çek
+        secrets = st.secrets["gcp_service_account"]
+        
+        # Yetkilendirme ayarları
+        scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+        creds = Credentials.from_service_account_info(secrets, scopes=scope)
+        client = gspread.authorize(creds)
+        
+        # Tabloyu aç
+        sheet = client.open(SHEET_ADI).sheet1
+        return sheet
+    except Exception as e:
+        st.error(f"Google Sheets bağlantı hatası: {e}")
+        return None
+
+def verileri_cek():
+    sheet = sheet_baglan()
+    if sheet:
+        data = sheet.get_all_records()
+        return pd.DataFrame(data)
+    return pd.DataFrame()
+
+def veri_ekle(isim, bilet_no):
+    sheet = sheet_baglan()
+    if sheet:
+        sheet.append_row([isim, str(bilet_no)])
+
+def veri_sil(bilet_no_sil):
+    sheet = sheet_baglan()
+    if sheet:
+        # Tüm bilet numaralarını çekip hangisi olduğunu bulmamız lazım
+        tum_biletler = sheet.col_values(2) 
+        
+        try:
+            row_index = tum_biletler.index(str(bilet_no_sil)) + 1
+            sheet.delete_rows(row_index)
+            return True
+        except ValueError:
+            return False
+
+# --- ANİMASYON ---
+def lottie_yukle(url):
+    try:
+        r = requests.get(url)
+        if r.status_code != 200: return None
+        return r.json()
+    except: return None
+
 menu_secimi = st.sidebar.radio("Menü", ["🎄 Kayıt Ekranı", "🔒 Yönetici Paneli"])
 
 # ==========================================
 # 🎄 1. SAYFA: KAYIT EKRANI
 # ==========================================
 if menu_secimi == "🎄 Kayıt Ekranı":
-    
-    st.title("🎅 Hoş Geldiniz! 🎁")
-    st.markdown("<h3 style='text-align: center; color: gray;'>Yılbaşı çekilişi için kaydınızı oluşturun.</h3>", unsafe_allow_html=True)
-    st.write("") 
-    
-    with st.container():
-        with st.form("kayit_formu", clear_on_submit=True):
-            isim = st.text_input("👤 Adınız Soyadınız", placeholder="Örn: Beyza Soykasap")
-            # --- DÜZELTİLEN SATIR BURASI ---
-            bilet_no = st.text_input("🎟️ Bilet Numaranız", placeholder="Örn: 17")
-            
-            st.write("")
-            gonder_tus = st.form_submit_button("❄️ KAYDET ❄️")
+    # Animasyon
+    lottie_url = "https://assets10.lottiefiles.com/packages/lf20_tij4c4.json"
+    lottie_json = lottie_yukle(lottie_url)
+    if lottie_json: st_lottie(lottie_json, height=200)
 
-            if gonder_tus:
-                if isim and bilet_no:
-                    # --- KONTROL MEKANİZMASI ---
-                    bilet_zaten_var = False
-                    
-                    if os.path.exists(DOSYA_ADI):
-                        try:
-                            mevcut_df = pd.read_csv(DOSYA_ADI)
-                            # Bilet numaralarını string formatına çevirip listeye alıyoruz
-                            alinmis_biletler = mevcut_df["BiletNo"].astype(str).tolist()
-                            if bilet_no in alinmis_biletler:
-                                bilet_zaten_var = True
-                        except:
-                            pass
-                    
-                    if bilet_zaten_var:
-                        st.warning(f"⚠️ {bilet_no} numaralı bilet daha önce alınmış! Lütfen başka bir numara girin.")
-                    else:
-                        dosya_yoktu = not os.path.exists(DOSYA_ADI)
-                        with open(DOSYA_ADI, mode="a", newline="", encoding="utf-8") as f:
-                            yazici = csv.writer(f)
-                            if dosya_yoktu:
-                                yazici.writerow(["Isim", "BiletNo"])
-                            yazici.writerow([isim, bilet_no])
-                        
-                        st.snow()
-                        st.success(f"Harika! {isim}, kaydın alındı. Bol şans! 🍀")
-                        time.sleep(7)
-                        try:
-                            st.rerun()
-                        except AttributeError:
-                            # Eski streamlit sürümleri için alternatif
-                            st.experimental_rerun()
+    st.title("🎅 Hoş Geldiniz! 🎁")
+    
+    with st.form("kayit_formu", clear_on_submit=True):
+        isim = st.text_input("👤 Adınız Soyadınız")
+        bilet_no = st.text_input("🎟️ Bilet Numaranız")
+        gonder = st.form_submit_button("❄️ KAYDET ❄️")
+        
+        if gonder:
+            if isim and bilet_no:
+                df = verileri_cek()
+                
+                # Kontrol: Bilet var mı?
+                bilet_var = False
+                if not df.empty:
+                    # Tipleri string yapıp kontrol et
+                    mevcut_biletler = df["BiletNo"].astype(str).tolist()
+                    if str(bilet_no) in mevcut_biletler:
+                        bilet_var = True
+                
+                if bilet_var:
+                    st.warning(f"⚠️ {bilet_no} zaten alınmış!")
                 else:
-                    st.error("Lütfen isim ve bilet numarasını eksiksiz girin.")
+                    veri_ekle(isim, bilet_no)
+                    st.snow()
+                    st.success("Kaydınız Google Sheets'e işlendi! ✅")
+                    time.sleep(2)
+                    st.rerun()
+            else:
+                st.error("Eksik bilgi girdiniz.")
 
 # ==========================================
 # 🔒 2. SAYFA: YÖNETİCİ PANELİ
 # ==========================================
 elif menu_secimi == "🔒 Yönetici Paneli":
     st.title("🔒 Yönetici Paneli")
+    
+    if "admin_logged_in" not in st.session_state: st.session_state.admin_logged_in = False
 
-    if "admin_logged_in" not in st.session_state:
-        st.session_state["admin_logged_in"] = False
-
-    if not st.session_state["admin_logged_in"]:
-        sifre_girilen = st.text_input("Giriş Şifresi", type="password")
-        if st.button("Giriş Yap"):
-            if sifre_girilen == YONETICI_SIFRESI:
-                st.session_state["admin_logged_in"] = True
-                try:
-                    st.rerun()
-                except AttributeError:
-                    st.experimental_rerun()
-            else:
-                st.error("Hatalı şifre!")
+    if not st.session_state.admin_logged_in:
+        sifre = st.text_input("Şifre", type="password")
+        if st.button("Giriş"):
+            if sifre == YONETICI_SIFRESI:
+                st.session_state.admin_logged_in = True
+                st.rerun()
+            else: st.error("Yanlış şifre")
     else:
-        # Yönetici İçeriği
-        st.success("Yönetici girişi yapıldı.")
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            if st.button("Çıkış Yap"):
-                st.session_state["admin_logged_in"] = False
-                try:
-                    st.rerun()
-                except AttributeError:
-                    st.experimental_rerun()
-
+        if st.button("Çıkış"):
+            st.session_state.admin_logged_in = False
+            st.rerun()
+        
         st.divider()
-
-        if os.path.exists(DOSYA_ADI):
-            try:
-                df = pd.read_csv(DOSYA_ADI)
-                # Veri tipi güvenliği (Her şeyi string yapalım)
-                df["BiletNo"] = df["BiletNo"].astype(str)
-                df["Isim"] = df["Isim"].astype(str)
-                
-                st.metric("Toplam Katılımcı", len(df))
-                
-                with st.expander("📋 Katılımcı Listesini Gör"):
-                    st.dataframe(df, use_container_width=True)
-
-                # --- SİLME BÖLÜMÜ ---
-                st.write("")
-                st.subheader("🗑️ Kayıt Sil")
-                if len(df) > 0:
-                    # Silme listesi oluştur
-                    silinecek_secenekler = df["BiletNo"] + " - " + df["Isim"]
-                    secilen_kisi = st.selectbox("Silinecek Kişiyi Seç:", silinecek_secenekler)
-                    
-                    if st.button("🚫 SEÇİLİ KAYDI SİL"):
-                        # Seçilen string'den sadece bilet numarasını al
-                        silinecek_bilet_no = secilen_kisi.split(" - ")[0]
-                        
-                        # Filtrele ve kaydet
-                        yeni_df = df[df["BiletNo"] != silinecek_bilet_no]
-                        yeni_df.to_csv(DOSYA_ADI, index=False)
-                        
-                        st.success(f"{secilen_kisi} başarıyla silindi!")
-                        time.sleep(1)
-                        try:
-                            st.rerun()
-                        except AttributeError:
-                            st.experimental_rerun()
+        df = verileri_cek()
+        
+        if not df.empty:
+            df["BiletNo"] = df["BiletNo"].astype(str)
+            st.metric("Katılımcı Sayısı", len(df))
+            st.dataframe(df, use_container_width=True)
+            
+            # SİLME İŞLEMİ
+            st.subheader("🗑️ Kayıt Sil")
+            silinecek = st.selectbox("Seç:", df["BiletNo"] + " - " + df["Isim"])
+            if st.button("🚫 SİL"):
+                bilet_sil = silinecek.split(" - ")[0]
+                if veri_sil(bilet_sil):
+                    st.success("Silindi!")
+                    time.sleep(1)
+                    st.rerun()
                 else:
-                    st.info("Silinecek kayıt yok.")
-                st.divider()
-
-                # --- ÇEKİLİŞ BÖLÜMÜ ---
-                st.subheader("🎲 Büyük Çekiliş")
-                st.write("Herkes hazırsa butona bas!")
-                
-                if st.button("🚀 KAZANANI BELİRLE", type="primary"):
-                    if len(df) > 0:
-                        progress_text = "Torba karıştırılıyor... 🥁"
-                        my_bar = st.progress(0, text=progress_text)
-                        for percent_complete in range(100):
-                            time.sleep(0.01)
-                            my_bar.progress(percent_complete + 1, text=progress_text)
-                        my_bar.empty()
-                        
-                        kazanan = df.sample(1).iloc[0]
+                    st.error("Silinemedi.")
+            
+            st.divider()
+            
+            # ÇEKİLİŞ
+            if st.button("🚀 ÇEKİLİŞ YAP", type="primary"):
+                if len(df) > 0:
+                    bar = st.progress(0, "Karıştırılıyor...")
+                    for i in range(100):
+                        time.sleep(0.01)
+                        bar.progress(i+1)
+                    bar.empty()
+                    
+                    if len(df) >= 2:
+                        kazananlar = df.sample(2)
+                        asil = kazananlar.iloc[0]
+                        yedek = kazananlar.iloc[1]
                         st.balloons()
-                        st.markdown(f"<h1 style='color: green; text-align: center;'>🏆 {kazanan['Isim']} 🏆</h1>", unsafe_allow_html=True)
-                        st.markdown(f"<h3 style='text-align: center;'>Bilet No: {kazanan['BiletNo']}</h3>", unsafe_allow_html=True)
+                        st.success(f"🏆 ASIL: {asil['Isim']} ({asil['BiletNo']})")
+                        st.info(f"✨ YEDEK: {yedek['Isim']} ({yedek['BiletNo']})")
                     else:
-                        st.warning("Listede kimse yok.")
-            except Exception as e:
-                st.error(f"Dosya okunurken hata oluştu: {e}")
+                        k = df.sample(1).iloc[0]
+                        st.balloons()
+                        st.success(f"🏆 KAZANAN: {k['Isim']} ({k['BiletNo']})")
         else:
-            st.warning("Henüz kimse kayıt olmadı.")
+            st.warning("Liste boş veya okunamadı.")
