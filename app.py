@@ -109,8 +109,8 @@ if menu_secimi == "🎄 Kayıt Ekranı":
                 else:
                     veri_ekle(isim, bilet_no)
                     st.snow()
-                    st.success("Kaydınız Google Sheets'e işlendi! ✅")
-                    time.sleep(2)
+                    st.success("Kaydınız alındı! ✅")
+                    time.sleep(7)
                     st.rerun()
             else:
                 st.error("Eksik bilgi girdiniz.")
@@ -171,11 +171,12 @@ elif menu_secimi == "🔒 Yönetici Paneli":
                         asil = kazananlar.iloc[0]
                         yedek = kazananlar.iloc[1]
                         st.balloons()
-                        st.success(f"🏆 ASIL: {asil['Isim']} ({asil['BiletNo']})")
-                        st.info(f"✨ YEDEK: {yedek['Isim']} ({yedek['BiletNo']})")
+                        st.success(f"🏆 1.: {asil['Isim']} ({asil['BiletNo']})")
+                        st.info(f"✨ 2.: {yedek['Isim']} ({yedek['BiletNo']})")
                     else:
                         k = df.sample(1).iloc[0]
                         st.balloons()
                         st.success(f"🏆 KAZANAN: {k['Isim']} ({k['BiletNo']})")
         else:
             st.warning("Liste boş veya okunamadı.")
+
